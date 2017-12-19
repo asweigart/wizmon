@@ -538,7 +538,7 @@ class WizardMoney:
 
 
     def __add__(self, other):
-        """Overrides the + operator to add two WizadMoney objects to produce
+        """Overrides the + operator to add two WizardMoney objects to produce
         a new WizardMoney object with the sum amount.
 
         Integers floats can be added to WizardMoney objects, in which case it's
@@ -615,7 +615,7 @@ class WizardMoney:
 
 
     def __sub__(self, other):
-        """Overrides the - operator to subtract two WizadMoney objects to produce
+        """Overrides the - operator to subtract two WizardMoney objects to produce
         a new WizardMoney object with the difference amount.
 
         Integers and floats can be added to WizardMoney objects, in which case it's
@@ -695,11 +695,24 @@ class WizardMoney:
 
 
     def __mul__(self, other):
-        """Overrides the * operator to multiply two WizadMoney objects to produce
+        """Overrides the * operator to multiply this WizardMoney object to produce
         a new WizardMoney object with the product amount.
 
-        Integers and floats can be added to WizardMoney objects,
-        in which case it's assumed they represent knuts.
+        When the WizardMoney object is multiplied by an int or a whole number
+        float, the denominations are simply multiplied, e.g. WizardMoney(1, 2, 3) * 2
+        results in WizardMoney(2, 4, 6).
+
+        However, when a non-whole number float is multiplied with the
+        WizardMoney object, the value of the WizardMoney object in knuts is
+        what gets multiplied to ensure the most accurate product, since
+        WizardMoney objects only contain integer quantities for its
+        denominations.
+
+        (As an explanation, imagine multiplying WizardMoney(galleons=1) by 1.5.
+        The quantity of galleons gets rounded down back to 1, even though 1
+        galleon multiplied by 1.5 would more accurately be 1 galleon, 8 sickles.
+        This is why we use knuts and then call convertToGalleons(): it ends up
+        being more accurate.)
 
         Examples:
 
@@ -707,11 +720,17 @@ class WizardMoney:
         WizardMoney(galleons=2, sickles=50, knuts=70)
         >>> WizardMoney(0, 35, 3) * -3
         WizardMoney(galleons=0, sickles=-105, knuts=-9)
+        >>> WizardMoney(1, 25, 35) * 2.35
+        WizardMoney(galleons=5, sickles=16, knuts=15)
         """
-        if type(other) != int or (type(other) == float and other % 1 != 0):
-            raise ValueError('multiplier must be int or float')
-
-        return WizardMoney(self._galleons * other, self._sickles * other, self._knuts * other)
+        if type(other) == int or (type(other) == float and other % 1 == 0):
+            return WizardMoney(int(self._galleons * other), int(self._sickles * other), int(self._knuts * other))
+        elif type(other) == float:
+            result = WizardMoney(knuts=int(self.value * other))
+            result.convertToGalleons()
+            return result
+        else:
+            raise ValueError('WizardMoney objects can only be multiplied by an int or float')
 
 
     def __rmul__(self, other):
@@ -720,62 +739,203 @@ class WizardMoney:
 
         Examples:
 
-        >>> 500 - WizardMoney(1, 25, 35)
-        WizardMoney(galleons=-1, sickles=-25, knuts=465)
+        >>> 2 * WizardMoney(1, 25, 35)
+        WizardMoney(galleons=2, sickles=50, knuts=70)
+        >>> -3 * WizardMoney(0, 35, 3)
+        WizardMoney(galleons=0, sickles=-105, knuts=-9)
+        >>> 2.35 * WizardMoney(1, 25, 35)
+        WizardMoney(galleons=5, sickles=16, knuts=15)
         """
         return self.__mul__(other) # NOTE: Multiplication is commutative, so let's just reuse the code in __add__().
 
 
     def __imul__(self, other):
-        self._galleons *= other
-        self._sickles *= other
-        self._knuts *= other
+        """Overrides the *= operator to subtract an int, float, or WizardMoney
+        object to this object.
 
-        return self
+        Examples:
+
+        >>> amt = WizardMoney(2, 3, 5)
+        >>> amt *= 2
+        >>> amt
+        WizardMoney(galleons=4, sickles=6, knuts=10)
+        """
+        if type(other) == int or (type(other) == float and other % 1 == 0):
+            self._galleons = int(self._galleons * other)
+            self._sickles = int(self._sickles * other)
+            self._knuts = int(self._knuts * other)
+            return self
+        elif type(other) == float:
+            result = WizardMoney(knuts=int(self.value * other))
+            result.convertToGalleons()
+            return result
+        else:
+            raise ValueError('WizardMoney objects can only be multiplied by an int or float')
+
 
 
     def __floordiv__(self, other):
-        if type(other) != int or (type(other) == float and other % 1 != 0):
-            raise ValueError('multiplier must be int or float')
+        """Overrides the // operator to divide this WizardMoney object by an
+        int or float. The resulting value is the WizardMoney value in knuts
+        divided by the other number, and then convertToGalleons() is called
+        to redistribute the quantities across the denominations.
 
-        result = WizardMoney(0, 0, self.value // other)
+        This is done to get the most accurate division.
+
+        Note that all division with WizardMoney objects is floor division.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt / 2
+        WizardMoney(galleons=1, sickles=2, knuts=3)
+        >>> amt.value / 2.5
+        443.2
+        >>> amt / 2.5
+        WizardMoney(galleons=0, sickles=15, knuts=8)
+        >>> (amt / 2.5).value
+        443
+        """
+
+        if type(other) not in (int, float):
+            raise ValueError('divisor must be int or float')
+
+        result = WizardMoney(0, 0, int(self.value // other))
         result.convertToGalleons()
         return result
 
 
     def __ifloordiv__(self, other):
+        """Overrides the //= operator.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt /= 2
+        >>> amt
+        WizardMoney(galleons=1, sickles=2, knuts=3)
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt /= 2.35
+        >>> amt
+        WizardMoney(galleons=0, sickles=16, knuts=7)
+
+        """
         value = self.value
         self._galleons = 0
         self._sickles = 0
-        self._knuts = value // other
+        self._knuts = int(value // other)
         self.convertToGalleons()
 
         return self
 
 
     def __truediv__(self, other):
-        # The design decision was that all division is floor division.
+        """Overrides the / operator, which for WizardMoney operators acts the
+        same as the // operator.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt / 2
+        WizardMoney(galleons=1, sickles=2, knuts=3)
+        >>> amt / 2.35
+        WizardMoney(galleons=0, sickles=16, knuts=7)
+        """
         return self.__floordiv__(other)
 
 
     def __itruediv__(self, other):
-        # The design decision was that all division is floor division.
-        self.__ifloordiv__(other)
+        """Overrides the /= operator, which for WizardMoney operators acts the
+        same as the //= operator.
 
+        Examples:
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt /= 2
+        >>> amt
+        WizardMoney(galleons=1, sickles=2, knuts=3)
+
+        >>> amt = WizardMoney(2, 4, 6)
+        >>> amt /= 2.35
+        >>> amt
+        WizardMoney(galleons=0, sickles=16, knuts=7)
+        """
+
+        self.__ifloordiv__(other)
         return self
 
 
     def __mod__(self, other):
+        """Overrides the % operator. The result has convertToGalleons() called
+        on it to redistribute the quantity to all denominations.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> amt.value % 13
+        10
+        >>> amt % 13
+        WizardMoney(galleons=0, sickles=0, knuts=10)
+        """
         result = WizardMoney(0, 0, self.value % other)
         result.convertToGalleons()
         return result
 
 
+    def __imod__(self, other):
+        """Overrides the %= operator. The result has convertToGalleons() called
+        on it to redistribute the quantity to all denominations.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> amt %= 13
+        >>> amt
+        WizardMoney(galleons=0, sickles=0, knuts=10)
+        """
+        self._knuts = self.value % other
+        self._galleons = 0
+        self._sickles = 0
+        self.convertToGalleons()
+        return self
+
+
     def __divmod__(self, other):
+        """Overrides divmod() for WizardMoney objects.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> amt / 13
+        WizardMoney(galleons=0, sickles=3, knuts=0)
+        >>> amt % 13
+        WizardMoney(galleons=0, sickles=0, knuts=10)
+        >>> result = ((amt / 13) * 13 + (amt % 13))
+        >>> result.convertToGalleons()
+        >>> result
+        WizardMoney(galleons=2, sickles=5, knuts=10)
+
+        >>> divmod(amt, 13)
+        (WizardMoney(galleons=0, sickles=3, knuts=0), WizardMoney(galleons=0, sickles=0, knuts=10))
+        """
         return (self.__floordiv__(other), self.__mod__(other))
 
 
     def __pow__(self, other):
+        """Overrides the ** operator. The result has convertToGalleons()
+        called on it to redistribute the quantity to all denominations.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> amt ** 2
+        WizardMoney(galleons=2640, sickles=12, knuts=13)
+        >>> (amt ** 2).value
+        1301881
+        >>> amt.value ** 2
+        1301881
+        """
         if type(other) not in (int, float):
             raise ValueError('exponent must be int or float')
 
@@ -785,6 +945,15 @@ class WizardMoney:
 
 
     def __ipow__(self, other):
+        """Overrides the **= operator.
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> amt **= 2
+        >>> amt
+        WizardMoney(galleons=2640, sickles=12, knuts=13)
+        """
         self._knuts = int(self.value ** other)
         self._galleons = 0
         self._sickles = 0
@@ -819,6 +988,18 @@ class WizardMoney:
 
 
     def __iter__(self):
+        """
+
+        Examples:
+
+        >>> amt = WizardMoney(2, 5, 10)
+        >>> for i in amt: print(i)
+        ...
+        2g
+        5s
+        10k
+        """
+
         # NOTE: Letting iter() do all the work for us makes this a simple
         # one-liner. But it doesn't really have as much educational value
         # for someone reading this code
