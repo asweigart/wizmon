@@ -50,7 +50,15 @@ KNUTS_PER_GALLEON = SICKLES_PER_GALLEON * KNUTS_PER_SICKLE
 # K = 'k'
 
 def parse(quantityStr):
-    """TODO quantityStr can be str, tuple, or iterable
+    """Parses a string of comma-delimited quantities of wizard money. A
+    quantity is a number followed by the units g, s, or k for galleon,
+    sickle, or knut. Negative signs are allowed but not commas, e.g. '-4g'
+    is okay but not '1,000g'.
+
+    Repeated units are summed together, e.g. '5g, 5g' is the same as '10g'.
+
+    parse() returns a WizardMoney object with the total quantities from
+    quantityStr.
 
     >>> parse('5g')
     WizardMoney(galleons=5, sickles=0, knuts=0)
@@ -139,22 +147,24 @@ def parse(quantityStr):
 
 
 class WizardMoney:
-    """A class to represent an amount of wizard money and handle the currency-related conversion math. TODO
+    """A class to represent an amount of wizard money and handle the currency-related conversion math.
 
-    >>> amt = WizardMoney(5, 2, 10)
-    >>> amt
+    >>> amount = WizardMoney(5, 2, 10)
+    >>> amount
     WizardMoney(galleons=5, sickles=2, knuts=10)
-    >>> str(amt)
+    >>> str(amount)
     '5g, 2s, 10k'
-    >>> amt.galleons
+    >>> amount.galleons
     5
-    >>> amt.sickles
+    >>> amount.sickles
     2
-    >>> amt.knuts
+    >>> amount.knuts
     10
-    >>> amt.knuts = 1000  # We can change any of the units.
-    >>> amt
+    >>> amount.knuts = 1000  # We can change any of the units.
+    >>> amount
     WizardMoney(galleons=5, sickles=2, knuts=1000)
+
+    >>> amt = WizardMoney(galleons=5, sickles=2, knuts=1000)
     >>> amt.asGalleons()  # Get a new object, with as many units converted to Galleons as possible.
     WizardMoney(galleons=7, sickles=2, knuts=14)
     >>> amt.asSickles()
@@ -166,8 +176,8 @@ class WizardMoney:
     >>> amt
     WizardMoney(galleons=5, sickles=2, knuts=1000)
     >>> amt.convertToGalleons()  # Modify the object in-place to convert units to Galleons.
-    >>> amt
-    WizardMoney(galleons=7, sickles=2, knuts=14)  # We still have 2 sickles and 14 knuts left over.
+    >>> amt  # We still have 2 sickles and 14 knuts left over.
+    WizardMoney(galleons=7, sickles=2, knuts=14)
     >>> amt.convertToSickles()
     >>> amt
     WizardMoney(galleons=0, sickles=121, knuts=14)
@@ -176,12 +186,22 @@ class WizardMoney:
     WizardMoney(galleons=0, sickles=0, knuts=3523)
     >>> amt.convertToGalleons()
     >>> amt
-    WizardMoney(galleons=7, sickles=0, knuts=72)  # Note that the sickles have previously been converted to knuts.
+    WizardMoney(galleons=7, sickles=2, knuts=14)
     >>> amt.value  # Note that the value is the same as before.
     3523
     """
 
     def __init__(self, galleons=0, sickles=0, knuts=0):
+        """Constructor for a WizardMoney object. The initial quantities can
+        be set by passing integer or whole-number floats for the galleons,
+        sickles, and knuts keyword arguments. These arguments default to 0.
+
+        Alternatively, you can also pass a single "quantity string" such
+        as '5g' or '2s, -5k' as the first and only argument and the
+        constructor will parse this amount. See the parse() function for
+        more details.
+        """
+
         # NOTE: Originally I thought it would be nice to be able to pass
         # amounts in other units for each argument, like
         # WizardMoney(galleons='34s') which would be equivalent to
@@ -223,57 +243,122 @@ class WizardMoney:
 
 
     def asKnuts(self):
-        """Converts the """
+        """Returns a new WizardMoney object with the same value as this
+        object, except with all denominations coverted to knuts.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.asKnuts()
+        WizardMoney(galleons=0, sickles=0, knuts=2533)
+        """
         knuts = self._knuts + (self._galleons * KNUTS_PER_GALLEON) + (self._sickles * KNUTS_PER_SICKLE)
         return WizardMoney(0, 0, knuts)
 
 
     def asSickles(self):
+        """Returns a new WizardMoney object with the same value as this
+        object, except with all denominations coverted to sickles. Any
+        remaining change is left as knuts.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.asSickles()
+        WizardMoney(galleons=0, sickles=87, knuts=10)
+        """
         sickles = self._sickles + (self._galleons * SICKLES_PER_GALLEON) + (self._knuts // KNUTS_PER_SICKLE)
         knuts = self._knuts % KNUTS_PER_SICKLE # (some knuts may be remaining)
         return WizardMoney(0, sickles, knuts)
 
 
     def asGalleons(self):
-        galleons = self._galleons + (self._knuts // (KNUTS_PER_GALLEON)) + (self._sickles // SICKLES_PER_GALLEON)
-        sickles = self._sickles % SICKLES_PER_GALLEON
-        knuts = self._knuts % KNUTS_PER_GALLEON
+        """Returns a new WizardMoney object with the same value as this
+        object, except with all denominations coverted to knuts. Any
+        remaining change is left as sickles or knuts (though knuts are
+        also converted to sickles.)
+
+        Call this method if you want the value in the largest denominations possible.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.asGalleons()
+        WizardMoney(galleons=5, sickles=2, knuts=10)
+        """
+        sickles = self._sickles + (self._knuts // KNUTS_PER_SICKLE) # convert knuts to sickles
+        knuts = self._knuts % KNUTS_PER_SICKLE # (some knuts may be remaining as change)
+
+        galleons = self._galleons + (sickles // SICKLES_PER_GALLEON) # convert sickles to galleons
+        sickles = sickles % SICKLES_PER_GALLEON # (some sickles may be remaining as change)
+
         return WizardMoney(galleons, sickles, knuts)
 
 
     def convertToKnuts(self):
+        """Modifies the WizardMoney object in-place with the same value as this
+        object, except with all denominations coverted to knuts.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.convertToKnuts()
+        >>> amt
+        WizardMoney(galleons=0, sickles=0, knuts=2533)
+        """
         self._knuts += (self._galleons * KNUTS_PER_GALLEON) + (self._sickles * KNUTS_PER_SICKLE)
         self._galleons = 0
         self._sickles = 0
 
 
     def convertToSickles(self):
+        """Modifies the WizardMoney object in-place with the same value as this
+        object, except with all denominations coverted to sickles. Any
+        remaining change is left as knuts.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.convertToSickles()
+        >>> amt
+        WizardMoney(galleons=0, sickles=87, knuts=10)
+        """
         self._sickles += (self._galleons * SICKLES_PER_GALLEON) + (self._knuts // KNUTS_PER_SICKLE)
-        self._knuts %= KNUTS_PER_SICKLE # (some knuts may be remaining)
+        self._knuts %= KNUTS_PER_SICKLE # (some knuts may be remaining as change)
         self._galleons = 0
 
 
     def convertToGalleons(self):
-        self._galleons += (self._knuts // (KNUTS_PER_GALLEON)) + (self._sickles // SICKLES_PER_GALLEON)
-        self._sickles %= SICKLES_PER_GALLEON
-        self._knuts %= KNUTS_PER_GALLEON
+        """Modifies the WizardMoney object in-place with the same value as this
+        object, except with all denominations coverted to knuts. Any
+        remaining change is left as sickles or knuts (though knuts are
+        also converted to sickles.)
 
+        Call this method if you want the value in the largest denominations possible.
 
-    def convert(self):
-        # First, convert as much to Galleons as possible:
-        self.convertToGalleons()
-        # Then, convert any remaining Knuts to Sickles:
-        self._sickles = self._knuts // KNUTS_PER_SICKLE
-        self._knuts %= KNUTS_PER_SICKLE
+        >>> amt = WizardMoney(0, 200, 1000)
+        >>> amt.convertToGalleons()
+        >>> amt
+        WizardMoney(galleons=13, sickles=13, knuts=14)
+        """
+        self._sickles += self._knuts // KNUTS_PER_SICKLE # convert knuts to sickles
+        self._knuts %= KNUTS_PER_SICKLE # (some knuts may be remaining as change)
+
+        self._galleons += self._sickles // SICKLES_PER_GALLEON # convert sickles to galleons
+        self._sickles %= SICKLES_PER_GALLEON # (some sickles may be remaining as change)
 
 
     @property
     def galleons(self):
+        """The "getter" for how many galleons are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.galleons
+        5
+        """
         return self._galleons
 
 
     @galleons.setter
     def galleons(self, value):
+        """The "setter" for how many galleons are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.galleons = 10
+        >>> amt
+        WizardMoney(galleons=10, sickles=2, knuts=10)
+        """
+
         if type(value) != int or (type(value) == float and value % 1 != 0):
             raise ValueError('galleons must be int or whole number float')
         self._galleons = int(value)
@@ -281,16 +366,36 @@ class WizardMoney:
 
     @galleons.deleter
     def galleons(self):
+        """The "deleter" for galleons. Sets the galleons property to 0.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> del amt.galleons
+        >>> amt
+        WizardMoney(galleons=0, sickles=2, knuts=10)
+        """
         self._galleons = 0
 
 
     @property
     def sickles(self):
+        """The "getter" for how many sickles are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.sickles
+        2
+        """
         return self._sickles
 
 
     @sickles.setter
     def sickles(self, value):
+        """The "setter" for how many sickles are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.sickles = 100
+        >>> amt
+        WizardMoney(galleons=10, sickles=100, knuts=10)
+        """
         if type(value) != int or (type(value) == float and value % 1 != 0):
             raise ValueError('sickles must be int or whole number float')
         self._galleons = int(value)
@@ -298,16 +403,36 @@ class WizardMoney:
 
     @sickles.deleter
     def sickles(self):
+        """The "deleter" for sickles. Sets the sickles property to 0.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> del amt.sickles
+        >>> amt
+        WizardMoney(galleons=5, sickles=0, knuts=10)
+        """
         self._sickles = 0
 
 
     @property
     def knuts(self):
+        """The "getter" for how many knuts are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.knuts
+        10
+        """
         return self._knuts
 
 
     @knuts.setter
     def knuts(self, value):
+        """The "setter" for how many knuts are in this WizardMoney object.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.knuts = 100
+        >>> amt
+        WizardMoney(galleons=10, sickles=2, knuts=100)
+        """
         if type(value) != int or (type(value) == float and value % 1 != 0):
             raise ValueError('knuts must be int or whole number float')
         self._knuts = int(value)
@@ -315,16 +440,39 @@ class WizardMoney:
 
     @knuts.deleter
     def knuts(self):
+        """The "deleter" for knuts. Sets the knuts property to 0.
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> del amt.knuts
+        >>> amt
+        WizardMoney(galleons=0, sickles=2, knuts=0)
+        """
         self._knuts = 0
 
 
     @property
     def value(self):
+        """The read-only property for the total value of this WizardMoney
+        object. (This is the same as the number of knuts it is worth.)
+
+        >>> amt = WizardMoney(5, 2, 10)
+        >>> amt.value
+        2533
+        """
         return (self._galleons * KNUTS_PER_GALLEON) + (self._sickles * KNUTS_PER_SICKLE) + self._knuts
 
 
     @value.setter
     def value(self, value):
+        """The value property is read-only, so attempting to write to it
+        results in an exception raised."""
+        raise Exception('value attribute is read-only') # TODO what is the right exception for this?
+
+
+    @value.deleter
+    def value(self):
+        """The value property is read-only, so attempting to write to it
+        results in an exception raised."""
         raise Exception('value attribute is read-only') # TODO what is the right exception for this?
 
 
@@ -341,6 +489,9 @@ class WizardMoney:
         if type(other) in (str, int, float):
             other = parse(other) # other is now a WizardMoney object.
 
+        if not isinstance(other, WizardMoney):
+            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+
         return WizardMoney(other._galleons + self._galleons, other._sickles + self._sickles, other._knuts + self._knuts)
 
 
@@ -352,6 +503,9 @@ class WizardMoney:
     def __iadd__(self, other):
         if type(other) in (str, int, float):
             other = parse(other) # other is now a WizardMoney object.
+
+        if not isinstance(other, WizardMoney):
+            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
 
         self._galleons += other._galleons
         self._sickles += other._sickles
@@ -377,7 +531,9 @@ class WizardMoney:
 
 
     def __isub__(self, other):
-        pass
+        self._galleons -= other
+        self._sickles -= other
+        self._knuts -= other
 
 
     def __mul__(self, other):
@@ -392,12 +548,18 @@ class WizardMoney:
 
 
     def __imul__(self, other):
-        pass
+        self._galleons *= other
+        self._sickles *= other
+        self._knuts *= other
 
 
     def __floordiv__(self, other):
-        # TODO - converts to knuts first
-        return WizardMoney(0, 0, self.value // other)
+        if type(other) != int or (type(other) == float and other % 1 != 0):
+            raise ValueError('multiplier must be int or whole number float')
+
+        result = WizardMoney(0, 0, self.value // other)
+        result.convertToGalleons()
+        return result
 
 
     def __ifloordiv__(self, other):
@@ -405,6 +567,7 @@ class WizardMoney:
         self._galleons = 0
         self._sickles = 0
         self._knuts = value // other
+        self.convertToGalleons()
 
 
     def __truediv__(self, other):
@@ -418,8 +581,9 @@ class WizardMoney:
 
 
     def __mod__(self, other):
-        # TODO - converts to knuts first
-        return WizardMoney(0, 0, self.value % other)
+        result = WizardMoney(0, 0, self.value % other)
+        result.convertToGalleons()
+        return result
 
 
     def __divmod__(self, other):
@@ -429,11 +593,14 @@ class WizardMoney:
     def __pow__(self, other):
         if type(other) != int or (type(other) == float and other % 1 != 0):
             raise ValueError('exponent must be int or whole number float')
+
         return WizardMoney(self._galleons ** other, self._sickles ** other, self._knuts ** other)
 
 
     def __ipow__(self, other):
-        pass
+        self._galleons **= other
+        self._sickles **= other
+        self._knuts **= other
 
     """
     # NOTE: This was the old design of the iterator protocol for WizardMoney.
