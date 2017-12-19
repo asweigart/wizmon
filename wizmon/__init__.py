@@ -24,7 +24,7 @@ Design decisions:
 - The quantity string '5g, 5g' will represent the quantity '10g'
 - WizardMoney can be subclassed, but it's not really set up that way. See the
   "NOTE:" explanation in the parse() function.
-- The constructor accepts only int values or whole number floats.
+- The constructor accepts only int()-compatible values or quantity strings.
 - Because we only deal with whole numbers for the units, all division is
   floor division.
 - Because we only deal with whole numbers for the units, all math operations
@@ -104,11 +104,11 @@ def parse(quantity):
         # ...a string like '5g, 2k'.
         # NOTE: TODO we use a geneartor expression with tuple()
         quantities = tuple((q.strip() for q in quantity.split(',')))
-    elif type(quantity) == int or (type(quantity) == float and quantity % 1 == 0):
-        # ...an int or whole number float (in which case we assume it is for knuts).
+    elif type(quantity) in (int, float):
+        # ...an int or float (in which case we assume it is for knuts).
         return WizardMoney(0, 0, int(quantity))
     else:
-        raise TypeError('quantity must be str, int, or whole number float')
+        raise TypeError('quantity must be str, int, or float')
 
     # NOTE: Originally I thought this function should also handle iterables
     # of '5g'-type of strings (or ints or WizardMoney objects), but decided
@@ -215,8 +215,8 @@ class WizardMoney:
 
     def __init__(self, galleons=0, sickles=0, knuts=0):
         """Constructor for a WizardMoney object. The initial quantities can
-        be set by passing integer or whole-number floats for the galleons,
-        sickles, and knuts keyword arguments. These arguments default to 0.
+        be set by passing integer or floats for the galleons, sickles, and
+        knuts keyword arguments. These arguments default to 0.
 
         Alternatively, you can also pass a single "quantity string" such
         as '5g' or '2s, -5k' as the first and only argument and the
@@ -233,11 +233,6 @@ class WizardMoney:
         # WizardMoney(galleons=2). But this turned into a nightmare of
         # complexity so I abandoned this idea.
 
-        # NOTE: I also originally thought that automatically converting
-        # values to ints was a good idea, but then reconsidered since
-        # 4.9 would convert to 4. The compromise is that the constructor
-        # can accept floats, but only if they are whole numbers.
-
         # If the galleons parameter is a string like '5g, 2s', we parse it.
         # We'll then ignore any sickles and knuts keyword arguments that
         # were originally passed in.
@@ -248,23 +243,24 @@ class WizardMoney:
             sickles = parsedWizMon.sickles
             knuts = parsedWizMon.knuts
 
-        if not (type(galleons) == int or (type(galleons) == float and galleons % 1 == 0)):
+        if type(galleons) not in (int, float):
             # NOTE: One of the reasons for making a class is to have
             # better error messages than the defaults. We don't want a
             # generic "invalid literal for int()" message.
-            raise ValueError('galleons must be int or whole number float')
+            raise ValueError('galleons must be compatible with int()')
 
-        if type(sickles) != int or (type(sickles) == float and sickles % 1 != 0):
-            raise ValueError('sickles must be int or whole number float')
+        if type(sickles) not in (int, float):
+            raise ValueError('sickles must be compatible with int()')
 
-        if type(knuts) != int or (type(knuts) == float and knuts % 1 != 0):
-            raise ValueError('knuts must be int or whole number float')
+        if type(knuts) not in (int, float):
+            raise ValueError('knuts must be compatible with int()')
 
         self._galleons = int(galleons)
         self._sickles = int(sickles)
         self._knuts = int(knuts)
 
-        self._iter_units_ptr = None # Used for the iterator protocol. See __iter__() and __next__()
+        # NOTE: We no longer use this. See __iter__()
+        #self._iter_units_ptr = None # Used for the iterator protocol. See __iter__() and __next__()
 
 
     def asKnuts(self):
@@ -384,38 +380,33 @@ class WizardMoney:
         >>> amt = WizardMoney(5, 2, 10)
         >>> amt.galleons
         5
+        >>> amt.galleons = 10
+        >>> amt
+        WizardMoney(galleons=10, sickles=2, knuts=10)
+        >>> del amt.galleons
+        >>> amt
+        WizardMoney(galleons=0, sickles=2, knuts=10)
         """
+
+        # NOTE: You need to put all doctests in the getter of a property.
+        # The doctest module ignores any doctests in the setter or deleter.
+        # Did you know this? I didn't. My tests passed even though there
+        # was clearly a bug in it. Huh.
         return self._galleons
 
 
     @galleons.setter
     def galleons(self, value):
-        """The "setter" for how many galleons are in this WizardMoney object.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> amt.galleons = 10
-        >>> amt
-        WizardMoney(galleons=10, sickles=2, knuts=10)
-        """
-
-        if type(value) != int or (type(value) == float and value % 1 != 0):
-            raise ValueError('galleons must be int or whole number float')
-        self._galleons = int(value)
+        """The "setter" for how many galleons are in this WizardMoney object."""
+        try:
+            self._galleons = int(value)
+        except ValueError:
+            raise ValueError('galleons must be compatible with int()')
 
 
     @galleons.deleter
     def galleons(self):
-        """The "deleter" for galleons. Sets the galleons property to 0.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> del amt.galleons
-        >>> amt
-        WizardMoney(galleons=0, sickles=2, knuts=10)
-        """
+        """The "deleter" for galleons. Sets the galleons property to 0."""
         self._galleons = 0
 
 
@@ -428,37 +419,28 @@ class WizardMoney:
         >>> amt = WizardMoney(5, 2, 10)
         >>> amt.sickles
         2
+        >>> amt.sickles = 100
+        >>> amt
+        WizardMoney(galleons=5, sickles=100, knuts=10)
+        >>> del amt.sickles
+        >>> amt
+        WizardMoney(galleons=5, sickles=0, knuts=10)
         """
         return self._sickles
 
 
     @sickles.setter
     def sickles(self, value):
-        """The "setter" for how many sickles are in this WizardMoney object.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> amt.sickles = 100
-        >>> amt
-        WizardMoney(galleons=10, sickles=100, knuts=10)
-        """
-        if type(value) != int or (type(value) == float and value % 1 != 0):
-            raise ValueError('sickles must be int or whole number float')
-        self._galleons = int(value)
+        """The "setter" for how many sickles are in this WizardMoney object."""
+        try:
+            self._sickles = int(value)
+        except:
+            raise ValueError('sickles must be compatible with int()')
 
 
     @sickles.deleter
     def sickles(self):
-        """The "deleter" for sickles. Sets the sickles property to 0.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> del amt.sickles
-        >>> amt
-        WizardMoney(galleons=5, sickles=0, knuts=10)
-        """
+        """The "deleter" for sickles. Sets the sickles property to 0."""
         self._sickles = 0
 
 
@@ -471,37 +453,28 @@ class WizardMoney:
         >>> amt = WizardMoney(5, 2, 10)
         >>> amt.knuts
         10
+        >>> amt.knuts = 100
+        >>> amt
+        WizardMoney(galleons=5, sickles=2, knuts=100)
+        >>> del amt.knuts
+        >>> amt
+        WizardMoney(galleons=5, sickles=2, knuts=0)
         """
         return self._knuts
 
 
     @knuts.setter
     def knuts(self, value):
-        """The "setter" for how many knuts are in this WizardMoney object.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> amt.knuts = 100
-        >>> amt
-        WizardMoney(galleons=10, sickles=2, knuts=100)
-        """
-        if type(value) != int or (type(value) == float and value % 1 != 0):
-            raise ValueError('knuts must be int or whole number float')
-        self._knuts = int(value)
+        """The "setter" for how many knuts are in this WizardMoney object."""
+        try:
+            self._knuts = int(value)
+        except:
+            raise ValueError('knuts must be compatible with int()')
 
 
     @knuts.deleter
     def knuts(self):
-        """The "deleter" for knuts. Sets the knuts property to 0.
-
-        Examples:
-
-        >>> amt = WizardMoney(5, 2, 10)
-        >>> del amt.knuts
-        >>> amt
-        WizardMoney(galleons=0, sickles=2, knuts=0)
-        """
+        """The "deleter" for knuts. Sets the knuts property to 0."""
         self._knuts = 0
 
 
@@ -568,8 +541,8 @@ class WizardMoney:
         """Overrides the + operator to add two WizadMoney objects to produce
         a new WizardMoney object with the sum amount.
 
-        Integers and whole number floats can be added to WizardMoney objects,
-        in which case it's assumed they represent knuts.
+        Integers floats can be added to WizardMoney objects, in which case it's
+        assumed they represent knuts.
 
         Examples:
 
@@ -584,14 +557,14 @@ class WizardMoney:
             other = parse(other) # other is now a WizardMoney object.
 
         if not isinstance(other, WizardMoney):
-            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+            raise TypeException('WizardMoney objects can only operate with int, floats, or other WizardMoney objects')
 
         return WizardMoney(other._galleons + self._galleons, other._sickles + self._sickles, other._knuts + self._knuts)
 
 
     def __radd__(self, other):
         """Overrides the + operator to add a WizardMoney object to an int
-        or whole number float.
+        or float.
 
         Examples:
 
@@ -603,8 +576,8 @@ class WizardMoney:
 
 
     def __iadd__(self, other):
-        """Overrides the += operator to add an int, whole number float, or
-        WizardMoney object to this object.
+        """Overrides the += operator to add an int, float, or WizardMoney
+        object to this object.
 
         Examples:
 
@@ -620,7 +593,7 @@ class WizardMoney:
             other = parse(other) # other is now a WizardMoney object.
 
         if not isinstance(other, WizardMoney):
-            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+            raise TypeException('WizardMoney objects can only operate with int, float, or another WizardMoney object')
 
         self._galleons += other._galleons
         self._sickles += other._sickles
@@ -645,8 +618,8 @@ class WizardMoney:
         """Overrides the - operator to subtract two WizadMoney objects to produce
         a new WizardMoney object with the difference amount.
 
-        Integers and whole number floats can be added to WizardMoney objects,
-        in which case it's assumed they represent knuts.
+        Integers and floats can be added to WizardMoney objects, in which case it's
+        assumed they represent knuts.
 
         Examples:
 
@@ -659,7 +632,7 @@ class WizardMoney:
             other = parse(other) # other is now a WizardMoney object.
 
         if not isinstance(other, WizardMoney):
-            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+            raise TypeException('WizardMoney objects can only operate with int, float, or another WizardMoney object')
 
         galleons = self._galleons - other._galleons
         sickles = self._sickles - other._sickles
@@ -672,7 +645,7 @@ class WizardMoney:
 
     def __rsub__(self, other):
         """Overrides the - operator to add a WizardMoney object to an int
-        or whole number float.
+        or float.
 
         Examples:
 
@@ -683,7 +656,7 @@ class WizardMoney:
             other = parse(other) # other is now a WizardMoney object.
 
         if not isinstance(other, WizardMoney):
-            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+            raise TypeException('WizardMoney objects can only operate with int, floats, or another WizardMoney object')
 
         galleons = other._galleons - self._galleons
         sickles = other._sickles - self._sickles
@@ -695,8 +668,8 @@ class WizardMoney:
 
 
     def __isub__(self, other):
-        """Overrides the -= operator to subtract an int, whole number float, or
-        WizardMoney object to this object.
+        """Overrides the -= operator to subtract an int, float, or WizardMoney
+        object to this object.
 
         Examples:
 
@@ -712,7 +685,7 @@ class WizardMoney:
             other = parse(other) # other is now a WizardMoney object.
 
         if not isinstance(other, WizardMoney):
-            raise TypeException('WizardMoney objects can only operate with int, whole-number floats, or other WizardMoney objects')
+            raise TypeException('WizardMoney objects can only operate with int, float, or another WizardMoney object')
 
         self._galleons -= other._galleons
         self._sickles -= other._sickles
@@ -725,7 +698,7 @@ class WizardMoney:
         """Overrides the * operator to multiply two WizadMoney objects to produce
         a new WizardMoney object with the product amount.
 
-        Integers and whole number floats can be added to WizardMoney objects,
+        Integers and floats can be added to WizardMoney objects,
         in which case it's assumed they represent knuts.
 
         Examples:
@@ -736,14 +709,14 @@ class WizardMoney:
         WizardMoney(galleons=0, sickles=-105, knuts=-9)
         """
         if type(other) != int or (type(other) == float and other % 1 != 0):
-            raise ValueError('multiplier must be int or whole number float')
+            raise ValueError('multiplier must be int or float')
 
         return WizardMoney(self._galleons * other, self._sickles * other, self._knuts * other)
 
 
     def __rmul__(self, other):
         """Overrides the * operator to multiply a WizardMoney object to an int
-        or whole number float.
+        or float.
 
         Examples:
 
@@ -763,7 +736,7 @@ class WizardMoney:
 
     def __floordiv__(self, other):
         if type(other) != int or (type(other) == float and other % 1 != 0):
-            raise ValueError('multiplier must be int or whole number float')
+            raise ValueError('multiplier must be int or float')
 
         result = WizardMoney(0, 0, self.value // other)
         result.convertToGalleons()
